@@ -18,6 +18,7 @@
  */
 
 #include <openssl/des.h>
+#include <openssl/evp.h>
 #include <string.h>
 #include "util.h"
 #include "mac.h"
@@ -32,35 +33,66 @@ unsigned char current_mac_key[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
  * bytes. The length specifies the length of the input in bytes. It
  * will be zero padded to 8 byte alignment if required.
  */
-int compute_mac(const unsigned char* input,
-		unsigned char* output,
-		const unsigned char* key,
-		long length) {
 
-  DES_cblock des_key =
-    { key[0], key[1], key[2], key[3], key[4], key[5], key[6], key[7] };
+ int compute_mac(const unsigned char* input,
+                 unsigned char* output,
+                 const unsigned char* key,
+                 long length) {
+     // Context for encryption
+     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+     if (!ctx) return 1; // Error creating context
 
-  // todo zeropad input if required
-  const unsigned char* padded_input = input;
+     // Initialize the encryption operation for DES CBC
+     if (EVP_EncryptInit_ex(ctx, EVP_des_cbc(), NULL, key, (unsigned char*)"\0\0\0\0\0\0\0\0") != 1) {
+         EVP_CIPHER_CTX_free(ctx);
+         return 1; // Error initializing encryption
+     }
 
-  // Generate a key schedule. Don't be picky, allow bad keys.
-  DES_key_schedule schedule;
-  DES_set_key_unchecked(&des_key, &schedule);
+     // Calculate the padded length
+     int block_size = EVP_CIPHER_CTX_block_size(ctx);
+     long padded_length = length + (block_size - (length % block_size));
 
-  // IV is all zeroes
-  unsigned char ivec[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+     // Allocate memory for padded input
+     unsigned char* padded_input = (unsigned char*)malloc((size_t)padded_length);
+     if (!padded_input) {
+         EVP_CIPHER_CTX_free(ctx);
+         return 1; // Memory allocation failed
+     }
+     memcpy(padded_input, input, (size_t)length);
 
-  // Compute the DES in CBC
-  DES_ncbc_encrypt(padded_input, output, length, &schedule, &ivec, 1);
+     // Properly handle padding calculation to avoid narrowing conversion
+     int padding_needed = block_size - (int)(length % block_size);
+     memset(padded_input + length, padding_needed, (size_t)padding_needed);
 
-  // Move up and truncate (we only want 8 bytes)
-  for (int i = 0; i < 8; ++i)
-    output[i] = output[length - 8 + i];
-  for (int i = 8; i < length; ++i)
-    output[i] = 0;
+     // Encrypt the padded input
+     int outlen;
+     if (EVP_EncryptUpdate(ctx, output, &outlen, padded_input, (int)padded_length) != 1) {
+         free(padded_input);
+         EVP_CIPHER_CTX_free(ctx);
+         return 1; // Error during encryption
+     }
 
-  return 0;
-}
+     // Finalize the encryption (additional output could be produced)
+     int tmplen;
+     if (EVP_EncryptFinal_ex(ctx, output + outlen, &tmplen) != 1) {
+         free(padded_input);
+         EVP_CIPHER_CTX_free(ctx);
+         return 1; // Error finalizing encryption
+     }
+     outlen += tmplen;
+
+     // Move up and truncate (we only want 8 bytes)
+     for (int i = 0; i < 8; ++i)
+         output[i] = output[outlen - 8 + i];
+     for (int i = 8; i < length; ++i)
+         output[i] = 0;
+
+     free(padded_input);
+     EVP_CIPHER_CTX_free(ctx);
+     return 0;
+ }
+
+
 
 /**
  * Compute the MAC of a given block with the specified 8 byte

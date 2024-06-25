@@ -69,29 +69,29 @@ void parse_cmdline(int argc, char** argv) {
     {"dict",      required_argument, 0,  'd' },
     {0,           0,                 0,  0   }
   };
-  
+
   char* tag_file = NULL;
   char* keys_file = NULL;
   char* dict_file = NULL;
-  
+
   int opt = 0;
   int long_index = 0;
-  while ((opt = getopt_long(argc, argv,"hvt:k:d:", 
+  while ((opt = getopt_long(argc, argv,"hvt:k:d:",
 			    long_options, &long_index )) != -1) {
     switch (opt) {
-    case 'h' : 
+    case 'h' :
       print_help();
       exit(0);
     case 'v' :
       print_version();
       exit(0);
-    case 't' : tag_file = optarg; 
+    case 't' : tag_file = optarg;
       break;
-    case 'k' : keys_file = optarg; 
+    case 'k' : keys_file = optarg;
       break;
-    case 'd' : dict_file = optarg; 
+    case 'd' : dict_file = optarg;
       break;
-    default : 
+    default :
       exit(1);
     }
   }
@@ -248,21 +248,23 @@ char* completion_sub_cmd_generator(const char* text, int state) {
 
   // First call?
   if (!state) {
-    cmd_index = 0;
-    len = strlen(text); // Cached for performance
-    full_len = strlen(rl_line_buffer);
+      cmd_index = 0;
+      len = strlen(text); // Cached for performance
+      full_len = strlen(rl_line_buffer);
   }
 
   // Return next suggestion
   char* name;
   while ((name = commands[cmd_index].name)) {
-    ++cmd_index;
+      ++cmd_index;
 
-    // Extract command and sub-command
-    char buff[128];
-    strncpy(buff, name, sizeof(buff));
-    char* cmd = strtok(buff, " ");
-    char* sub = strtok(NULL, " ");
+      // Extract command and sub-command
+      char buff[128];
+      strncpy(buff, name, sizeof(buff) - 1); // Leave space for the null terminator
+      buff[sizeof(buff) - 1] = '\0'; // Ensure the string is null-terminated
+
+      char* cmd = strtok(buff, " ");
+      char* sub = strtok(NULL, " ");
 
     // Make sure the command *has* a sub command
     // and that we have the right command.
